@@ -1,4 +1,3 @@
-# test.py - Modified for remote saving
 import requests
 import random
 import json
@@ -11,8 +10,9 @@ from concurrent.futures import ThreadPoolExecutor
 from requests.exceptions import Timeout, ConnectionError, HTTPError
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
-# --- Setup and Configuration ---
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s", 
     level=logging.INFO, 
@@ -20,18 +20,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- REMOTE SAVE CONFIGURATION ---
-SAVE_SERVER_URL = "https://phototactic-florida-lacunose.ngrok-free.dev/save_profile"  # <-- यहाँ आपका ngrok URL डालें
+SAVE_SERVER_URL = "https://phototactic-florida-lacunose.ngrok-free.dev/save_profile"
 MAX_RETRY_SAVE = 3
 SAVE_TIMEOUT = 10
 
 SECRET_KEY = os.environ.get("SHEIN_SECRET_KEY", "3LFcKwBTXcsMzO5LaUbNYoyMSpt7M3RP5dW9ifWffzg")
+PORT = int(os.getenv("PORT", 8080))
+
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot Running")
+
+def run_health_check():
+    """Render ke liye health check server start karta hai."""
+    server = HTTPServer(('0.0.0.0', PORT), HealthCheckHandler)
+    logger.info(f"Health check server started on port {PORT}")
+    server.serve_forever()
 
 class SheinCliFetcher:
     """A CLI utility to fetch SHEIN profile data, optimized for stability and speed."""
     
     def __init__(self):
-        # API URLs
         self.client_token_url = "https://api.sheinindia.in/uaas/jwt/token/client"
         self.account_check_url = "https://api.sheinindia.in/uaas/accountCheck?client_type=Android%2F29&client_version=1.0.8"
         self.creator_token_url = "https://shein-creator-backend-151437891745.asia-south1.run.app/api/v1/auth/generate-token"
@@ -39,14 +50,12 @@ class SheinCliFetcher:
 
         self.session = requests.Session()
         
-        # RETRY MECHANISM
         retry_strategy = Retry(
             total=3, 
             backoff_factor=0.5, 
             status_forcelist=[500, 502, 503, 504],
         )
 
-        # CONNECTION POOL SIZE
         adapter = HTTPAdapter(
             pool_connections=50, 
             pool_maxsize=50,
@@ -56,8 +65,7 @@ class SheinCliFetcher:
         self.session.mount('http://', adapter)
         self.session.mount('https://', adapter)
 
-    # --- Utility Methods ---
-    
+ 
     def get_random_ip(self):
         """Generate random IP address for X-Forwarded-For header."""
         return ".".join(str(random.randint(0, 255)) for _ in range(4))
@@ -406,4 +414,9 @@ def main_cli_automation():
         logger.critical(f"A critical error occurred: {e}")
 
 if __name__ == "__main__":
-    main_cli_automation()
+    health_thread = threading.Thread(target=run_health_check, daemon=True)
+    health_thread.start()
+    try:
+        main_cli_automation()
+    except Exception as e:
+        logger.critical(f"Main loop crashed: {e}")
