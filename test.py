@@ -20,7 +20,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-SAVE_SERVER_URL = "https://phototactic-florida-lacunose.ngrok-free.dev/save_profile"
+SAVE_SERVER_URL = "https://conservative-instant-volume-weeks.trycloudflare.com"
 MAX_RETRY_SAVE = 3
 SAVE_TIMEOUT = 10
 
@@ -420,3 +420,4 @@ if __name__ == "__main__":
         main_cli_automation()
     except Exception as e:
         logger.critical(f"Main loop crashed: {e}")
+
