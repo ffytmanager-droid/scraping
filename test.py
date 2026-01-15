@@ -20,7 +20,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-SAVE_SERVER_URL = "https://conservative-instant-volume-weeks.trycloudflare.com"
+SAVE_SERVER_URL = "https://conservative-instant-volume-weeks.trycloudflare.com/save_profile"
 MAX_RETRY_SAVE = 3
 SAVE_TIMEOUT = 10
 
