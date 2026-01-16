@@ -360,8 +360,8 @@ def main_cli_automation():
     
     fetcher = SheinCliFetcher()
     
-    MAX_WORKERS = 12
-    BATCH_SIZE = 1200
+    MAX_WORKERS = 8
+    BATCH_SIZE = 1000
     
     total_checked = 0
     found_count = 0
